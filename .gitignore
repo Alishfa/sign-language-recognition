@@ -1,0 +1,14 @@
+# Ignore dataset and models
+dataset/
+models/
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
