@@ -1,23 +1,28 @@
 import cv2
 import os
+import mediapipe as mp
 
-
-
-current_label = "A"
 
 
 # path to save the images
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-print(f"Base directory: {BASE_DIR}")
+#mediapipe initialization
+mp_hands = mp.solutions.hands
+mp_draw = mp.solutions.drawing_utils
+hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7,min_tracking_confidence=0.7)
 def get_dataset_path(label):
     path = os.path.join(BASE_DIR, "dataset", label)
     os.makedirs(path, exist_ok=True)
     return path
-dataset_path = get_dataset_path(current_label)
+label =input("Enter the label for the images (A-Z): ").upper()
+dataset_path = get_dataset_path(label)
 
 #counter for images
 img_count=len(os.listdir(dataset_path))
+print(f"\nCollecting images for: {label}")
+print("Press S = Save")
+print("Press N = Change Alphabet")
+print("Press Q = Quit")
 
 #start video capture
 cap= cv2.VideoCapture(0)
@@ -34,16 +39,49 @@ while True:
     
     frame = cv2.flip(frame,1)
     
-    #draw rectangle for hand region
-    
-    cv2.rectangle(frame,(300,100),(600,400),(0,255,0),2)
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    result = hands.process(rgb)
+    cropped_hand = None
+
+    if result.multi_hand_landmarks:
+        for hand_landmarks in result.multi_hand_landmarks:
+            mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            # Get bounding box coordinates
+            h, w, c = frame.shape
+            x_list =[]
+            y_list =[]
+
+            for lm in hand_landmarks.landmark:
+                x=int(lm.x * w)
+                y=int(lm.y * h)
+
+                x_list.append(x)
+                y_list.append(y)
+
+            # Add some padding to the bounding box
+            padding = 30
+            x_min = max(min(x_list) - padding, 0)
+            y_min = max(min(y_list) - padding, 0)
+            x_max = min( max(x_list) + padding, w)
+            y_max = min( max(y_list) + padding, h)
+
+            # Crop the hand region from the frame
+            cv2.rectangle(
+                frame,
+                (x_min, y_min),
+                (x_max, y_max),
+                (0, 255, 0),
+                2
+            )
+
+            cropped_hand = frame[y_min:y_max, x_min:x_max]
     
  # Display current label
-    cv2.putText(frame, f"Label: {current_label}", (10, 30),cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(frame, f"Label: {label}", (10, 35),cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
 
     #show count 
-    cv2.putText(frame,f"Images: {img_count}",(10,70),cv2.FONT_HERSHEY_SIMPLEX,1,(255,0,0),2)
+    cv2.putText(frame,f"Images: {img_count}",(10,75),cv2.FONT_HERSHEY_SIMPLEX,1,(255,0,0),2)
     
      # Instructions
     cv2.putText(frame, "Press A-Z to change label", (10, 110),
@@ -56,43 +94,38 @@ while True:
 
     
     #wait for key press
-    key = cv2.waitKey(1) 
+    key = cv2.waitKey(1) & 0xFF
     
-    #quit
-    if key == ord('q'):
-        break
 
     # Save image
-    elif key == ord('s'):
+    if key == ord('s'):
 
-        
-        # Crop ROI
-        roi = frame[100:400, 300:600]
+        if cropped_hand is not None:
+            save_img = cv2.resize(cropped_hand, (300, 300))
+            filename = os.path.join(
+                dataset_path, f"{label}_{img_count}.jpg"
+                )
 
-        # Create image name
-        img_name = os.path.join(
-            dataset_path,
-            f"{current_label}_{img_count}.jpg"
-        )
+            cv2.imwrite(filename, save_img)
 
+            print(f"Saved {filename}")
 
-        cv2.imwrite(img_name, roi)
-
-        print(f"Saved {img_name}")
-
-        img_count += 1
+            img_count += 1
        
-        # Change label dynamically
-    elif ord('A') <= key <= ord('Z'):
+        else:
+            print("No hand detected!")
+    # Change label
+    elif key == ord('n'):
 
-        current_label = chr(key)
+        label = input("\nEnter new alphabet: ").upper()
 
-        dataset_path = get_dataset_path(current_label)
+        dataset_path = get_dataset_path(label)
 
         img_count = len(os.listdir(dataset_path))
+    #quit the program
+    elif key == ord('q'):
+        break
 
-        print(f"Switched to label: {current_label}")
-
-
+#realase the webcam and close windows
 cap.release()
 cv2.destroyAllWindows()  
