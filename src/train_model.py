@@ -1,38 +1,97 @@
 import os
-import cv2
-import numpy as np
-#project root folder
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-print(BASE_DIR)
-dataset_path = os.path.join(BASE_DIR, "dataset")
-print("Dataset path:", dataset_path)
-# Store images and labels
-images = []
-labels = []
-#label mapping
-label_map = {
-    "A": 0,
-    "B": 1,
-    "C": 2
-}
-for label in label_map:
-    folder_path = os.path.join(dataset_path, label)
-    print("Processing folder:", folder_path)
-    for image_name in os.listdir(folder_path):
-        image_path = os.path.join(folder_path, image_name)
-        print("Processing image:", image_path)
-        image = cv2.imread(image_path)
-        if image is None:
-            continue
-        image = cv2.resize(image, (64, 64))
-        images.append(image)
-        labels.append(label_map[label])
-#convert to numpy arrays
-x = np.array(images)
-y = np.array(labels)
-print("Images shape:", x.shape)
-print("Labels shape:", y.shape)
-print("Number of classes:", len(label_map))
-print("Number of samples:", len(images))
-print("unique labels:", np.unique(y))
 
+from imageprocessing import load_data
+from build_model import create_model
+
+
+# Project Directories
+
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+MODEL_DIR = os.path.join(BASE_DIR, "models")
+
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+
+
+# Training Parameters
+
+
+EPOCHS = 20
+BATCH_SIZE = 16
+
+
+
+# Load Dataset
+
+
+x_train, x_test, y_train, y_test = load_data()
+
+
+
+# Number of Classes
+
+
+num_classes = len(set(y_train))
+
+print(f"Number of Classes: {num_classes}")
+
+
+# Build CNN Model
+
+
+model = create_model(num_classes)
+
+model.summary()
+
+
+
+# Compile Model
+
+
+model.compile(
+    optimizer="adam",
+    loss="sparse_categorical_crossentropy",
+    metrics=["accuracy"]
+)
+
+
+# Train Model
+
+
+history = model.fit(
+    x_train,
+    y_train,
+    epochs=EPOCHS,
+    batch_size=BATCH_SIZE,
+    validation_data=(x_test, y_test)
+)
+
+
+
+# Evaluate Model
+
+
+test_loss, test_accuracy = model.evaluate(
+    x_test,
+    y_test
+)
+
+print(f"\nTest Loss: {test_loss:.4f}")
+print(f"Test Accuracy: {test_accuracy:.4f}")
+
+
+
+# Save Model
+
+
+model_path = os.path.join(
+    MODEL_DIR,
+    "sign_language_model.keras"
+)
+
+model.save(model_path)
+
+print(f"\nModel saved successfully!")
+print(model_path)
