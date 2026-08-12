@@ -3,7 +3,6 @@ import mediapipe as mp
 import os
 
 
-
 # PROJECT PATH
 
 
@@ -12,7 +11,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATASET_DIR = os.path.join(BASE_DIR, "dataset_v2")
 
 
+
 # MEDIAPIPE
+
 
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
@@ -29,40 +30,71 @@ hands = mp_hands.Hands(
 # DATASET FOLDER
 
 def get_dataset_path(label):
-
     path = os.path.join(DATASET_DIR, label)
-
     os.makedirs(path, exist_ok=True)
-
     return path
 
+# COLLECTOR NAME
 
-# GET LABEL
 
-label = input("Enter alphabet (A-Z): ").upper()
+collector_name = input(  "Enter your name (examle:Aqsa): ").strip().replace(" ", "_")
+
+if not collector_name:
+    print("Error: Collector name cannot be empty.")
+    exit()
+
+
+# GET INITIAL LABEL
+
+label = input("Enter alphabet (A-Z): ").strip().upper()
+
+if len(label) != 1 or not label.isalpha() or not label.isupper():
+    print("Error: Please enter one alphabet from A-Z.")
+    exit()
+
 
 dataset_path = get_dataset_path(label)
 
-img_count = len([
-    f for f in os.listdir(dataset_path)
-    if f.lower().endswith((".jpg", ".jpeg", ".png"))
-])
+
+
+# IMAGE COUNTER
+# Count only this collector's images
+
+
+def get_image_count(label, collector_name):
+
+    folder_path = get_dataset_path(label)
+
+    prefix = f"{label}_{collector_name}_"
+
+    files = [
+        f for f in os.listdir(folder_path)
+        if f.lower().endswith((".jpg", ".jpeg", ".png"))
+        and f.startswith(prefix)
+    ]
+
+    return len(files)
+
+
+img_count = get_image_count(label, collector_name)
 
 
 print()
+print(f"Collector: {collector_name}")
 print(f"Collecting images for: {label}")
-print(f"Existing images: {img_count}")
+print(f"Your existing images for {label}: {img_count}")
 print()
 print("S = Save image")
-print("N = Change alphabet")
+print("N = Change letter")
 print("Q = Quit")
 
 
-
-# CAMERA
-
 cap = cv2.VideoCapture(0)
 
+
+if not cap.isOpened():
+    print("Error: Could not open webcam.")
+    exit()
 
 
 # MAIN LOOP
@@ -72,33 +104,37 @@ while True:
     ret, frame = cap.read()
 
     if not ret:
-
         print("Failed to grab frame.")
-
         break
 
 
     # Mirror effect
+   
+
     frame = cv2.flip(frame, 1)
 
 
+    
 
     clean_frame = frame.copy()
 
 
-    # Convert to RGB for MediaPipe
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    # Convert BGR → RGB for MediaPipe
+
+    rgb_frame = cv2.cvtColor(
+        frame,
+        cv2.COLOR_BGR2RGB
+    )
 
 
     # Detect hand
-    results = hands.process(rgb_frame)
 
+    results = hands.process(rgb_frame)
 
     cropped_hand = None
 
 
     # HAND DETECTED
-    
 
     if results.multi_hand_landmarks:
 
@@ -108,6 +144,7 @@ while True:
 
 
         # Get landmark coordinates
+        
 
         x_list = []
         y_list = []
@@ -122,17 +159,67 @@ while True:
             y_list.append(y)
 
 
+        # Initial bounding box
+
+        x_min = min(x_list)
+        y_min = min(y_list)
+
+        x_max = max(x_list)
+        y_max = max(y_list)
+
+
+        # Calculate hand size
+
+        box_width = x_max - x_min
+        box_height = y_max - y_min
+
+
+        # Proportional padding
+
+        padding = int(
+            max(box_width, box_height) * 0.30
+        )
+
+
+        x_min -= padding
+        y_min -= padding
+
+        x_max += padding
+        y_max += padding
+
+
+        # Make box square
         
-        # Bounding box
 
-        padding = 30
+        box_width = x_max - x_min
+        box_height = y_max - y_min
+
+        size = max(
+            box_width,
+            box_height
+        )
+
+        center_x = (x_min + x_max) // 2
+        center_y = (y_min + y_max) // 2
 
 
-        x_min = max(min(x_list) - padding, 0)
-        y_min = max(min(y_list) - padding, 0)
+        x_min = center_x - size // 2
+        x_max = center_x + size // 2
 
-        x_max = min(max(x_list) + padding, w)
-        y_max = min(max(y_list) + padding, h)
+        y_min = center_y - size // 2
+        y_max = center_y + size // 2
+
+
+        # Keep coordinates inside frame
+
+        x_min = max(x_min, 0)
+        y_min = max(y_min, 0)
+
+        x_max = min(x_max, w)
+        y_max = min(y_max, h)
+
+
+        # Crop CLEAN frame
 
         cropped_hand = clean_frame[
             y_min:y_max,
@@ -140,7 +227,7 @@ while True:
         ]
 
 
-        # Draw bounding box for DISPLAY ONLY
+        # Draw box for DISPLAY ONLY
 
         cv2.rectangle(
             frame,
@@ -151,9 +238,7 @@ while True:
         )
 
 
-        
-        # Draw MediaPipe landmarks for DISPLAY ONLY
-        
+        # Draw landmarks for DISPLAY ONLY
 
         mp_draw.draw_landmarks(
             frame,
@@ -166,10 +251,10 @@ while True:
 
     cv2.putText(
         frame,
-        f"Letter: {label}",
-        (10, 35),
+        f"Collector: {collector_name}",
+        (10, 30),
         cv2.FONT_HERSHEY_SIMPLEX,
-        1,
+        0.8,
         (255, 0, 0),
         2
     )
@@ -177,10 +262,21 @@ while True:
 
     cv2.putText(
         frame,
-        f"Images: {img_count}",
-        (10, 75),
+        f"Letter: {label}",
+        (10, 65),
         cv2.FONT_HERSHEY_SIMPLEX,
-        1,
+        0.9,
+        (255, 0, 0),
+        2
+    )
+
+
+    cv2.putText(
+        frame,
+        f"Your Images: {img_count}",
+        (10, 100),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
         (0, 255, 0),
         2
     )
@@ -188,8 +284,8 @@ while True:
 
     cv2.putText(
         frame,
-        "S = Save | N = New Letter | Q = Quit",
-        (10, 115),
+        "S = Save | N = Next Letter | Q = Quit",
+        (10, 135),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
         (255, 255, 255),
@@ -197,24 +293,25 @@ while True:
     )
 
 
-    # Show camera window
-    cv2.imshow("Sign Language Dataset Collection", frame)
+    # Show camera
+
+    cv2.imshow(
+        "Sign Language Dataset Collection",
+        frame
+    )
 
 
-    # KEYBOARD
-    
+    # KEYBOARD INPUT
 
     key = cv2.waitKey(1) & 0xFF
 
-
-    
-    # SAVE
+    # SAVE IMAGE
 
     if key == ord("s"):
 
         if cropped_hand is not None:
 
-            # Resize clean hand crop
+            # Resize clean crop
             save_image = cv2.resize(
                 cropped_hand,
                 (300, 300)
@@ -223,53 +320,63 @@ while True:
 
             filename = os.path.join(
                 dataset_path,
-                f"{label}_{img_count}.jpg"
+                f"{label}_{collector_name}_{img_count}.jpg"
             )
 
 
-            cv2.imwrite(
+            success = cv2.imwrite(
                 filename,
                 save_image
             )
 
 
-            print(f"Saved: {filename}")
+            if success:
 
+                print(
+                    f"Saved: {filename}"
+                )
 
-            img_count += 1
+                img_count += 1
 
+            else:
+
+                print(
+                    "Error: Image could not be saved."
+                )
 
         else:
 
-            print("No hand detected. Image not saved.")
+            print(
+                "No hand detected. Image not saved."
+            )
 
-
-    # CHANGE LETTER
+    # Move to next alphabet
 
     elif key == ord("n"):
+        if label == "Z":
+            label = "A"
+        else:
+            label = chr(ord(label) + 1)
 
-        label = input("\nEnter new alphabet (A-Z): ").upper()
-
-
+        # Update dataset folder
         dataset_path = get_dataset_path(label)
 
-
-        img_count = len([
-            f for f in os.listdir(dataset_path)
-            if f.lower().endswith(
-                (".jpg", ".jpeg", ".png")
-            )
-        ])
-
+        # Count this collector's existing images
+        img_count = get_image_count(
+            label,
+            collector_name
+        )
 
         print(f"\nNow collecting: {label}")
-
+        print(f"Your existing images: {img_count}")
 
     # QUIT
 
     elif key == ord("q"):
 
-        print("Stopping dataset collection...")
+        print(
+            "Stopping dataset collection..."
+        )
 
         break
 
